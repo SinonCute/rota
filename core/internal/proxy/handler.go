@@ -397,7 +397,15 @@ func (h *UpstreamProxyHandler) removeHopByHopHeaders(req *http.Request) {
 // ConnectThroughProxyForDial is called by goproxy's ConnectDial
 // It establishes a connection through the upstream proxy pool
 func (h *UpstreamProxyHandler) ConnectThroughProxyForDial(host string) (net.Conn, int, error) {
-	return h.connectThroughProxy(host, context.Background())
+	// Create context with timeout for the entire CONNECT operation
+	timeout := time.Duration(h.settings.Timeout) * time.Second
+	if timeout <= 0 {
+		timeout = 60 * time.Second // Default timeout for CONNECT
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	return h.connectThroughProxy(host, ctx)
 }
 
 // HandleConnect handles HTTPS CONNECT requests through upstream proxy
@@ -462,8 +470,8 @@ func (h *UpstreamProxyHandler) connectThroughProxy(host string, ctx context.Cont
 			"fallback_attempt", fallbackAttempt+1,
 		)
 
-		// Try this proxy with retries
-		conn, err := h.tryConnectWithRetries(selectedProxy, host, perProxyRetries)
+		// Try this proxy with retries (pass context for timeout)
+		conn, err := h.tryConnectWithRetries(ctx, selectedProxy, host, perProxyRetries)
 		duration := int(time.Since(startTime).Milliseconds())
 
 		if err != nil {
@@ -535,7 +543,7 @@ func (h *UpstreamProxyHandler) connectThroughProxy(host string, ctx context.Cont
 }
 
 // tryConnectWithRetries attempts to connect through a specific proxy with retries
-func (h *UpstreamProxyHandler) tryConnectWithRetries(selectedProxy *models.Proxy, host string, maxRetries int) (net.Conn, error) {
+func (h *UpstreamProxyHandler) tryConnectWithRetries(ctx context.Context, selectedProxy *models.Proxy, host string, maxRetries int) (net.Conn, error) {
 	var lastErr error
 
 	for retry := 0; retry < maxRetries; retry++ {
@@ -548,8 +556,8 @@ func (h *UpstreamProxyHandler) tryConnectWithRetries(selectedProxy *models.Proxy
 			"max_retries", maxRetries,
 		)
 
-		// Try to connect through this proxy
-		conn, err := h.connectViaProxy(selectedProxy, host)
+		// Try to connect through this proxy (pass context for timeout)
+		conn, err := h.connectViaProxy(ctx, selectedProxy, host)
 		if err != nil {
 			lastErr = fmt.Errorf("proxy %s failed: %w", selectedProxy.Address, err)
 			h.logger.Warn("proxy CONNECT failed",
@@ -583,7 +591,7 @@ func (h *UpstreamProxyHandler) tryConnectWithRetries(selectedProxy *models.Proxy
 }
 
 // connectViaProxy establishes a connection through a specific proxy
-func (h *UpstreamProxyHandler) connectViaProxy(proxy *models.Proxy, host string) (net.Conn, error) {
+func (h *UpstreamProxyHandler) connectViaProxy(ctx context.Context, proxy *models.Proxy, host string) (net.Conn, error) {
 	switch proxy.Protocol {
 	case "egress_ip":
 		// Egress IP rotation: bind to local IP and connect directly
@@ -600,17 +608,51 @@ func (h *UpstreamProxyHandler) connectViaProxy(proxy *models.Proxy, host string)
 			return nil, fmt.Errorf("IP validation failed for egress_ip: %w", err)
 		}
 
-		// Create dialer bound to local IP
+		// Create dialer bound to local IP with timeout
 		dialer, err := ipManager.BindToIP(ip)
 		if err != nil {
 			return nil, fmt.Errorf("failed to bind to IP %s for egress_ip: %w", ip, err)
 		}
 
+		// Set timeout for connection
+		timeout := time.Duration(h.settings.Timeout) * time.Second
+		if timeout <= 0 {
+			timeout = 30 * time.Second // Default timeout
+		}
+		dialer.Timeout = timeout
+
+		// Use context with timeout - wrap existing context if needed
+		dialCtx := ctx
+		if dialCtx == nil {
+			dialCtx = context.Background()
+		}
+		// Check if context already has a deadline
+		if _, hasDeadline := dialCtx.Deadline(); !hasDeadline {
+			var cancel context.CancelFunc
+			dialCtx, cancel = context.WithTimeout(dialCtx, timeout)
+			defer cancel()
+		}
+
 		// Connect directly to target host using bound dialer
-		conn, err := dialer.DialContext(context.Background(), "tcp", host)
+		h.logger.Info("dialing target with egress_ip",
+			"source", "proxy",
+			"egress_ip", ip,
+			"target", host,
+			"timeout", timeout,
+		)
+
+		conn, err := dialer.DialContext(dialCtx, "tcp", host)
 		if err != nil {
 			return nil, fmt.Errorf("failed to connect to %s via egress_ip %s: %w", host, ip, err)
 		}
+
+		h.logger.Info("egress_ip connection established",
+			"source", "proxy",
+			"egress_ip", ip,
+			"target", host,
+			"local_addr", conn.LocalAddr(),
+			"remote_addr", conn.RemoteAddr(),
+		)
 
 		return conn, nil
 
