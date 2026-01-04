@@ -19,12 +19,17 @@ RUN corepack enable && corepack prepare pnpm@10.19.0 --activate
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Accept build argument for API URL
+ARG NEXT_PUBLIC_API_URL=http://localhost:8001
+
 # Set environment variables for build
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 # Build the application
-# Note: NEXT_PUBLIC_API_URL can be set at runtime, no need for build arg
+# NOTE: NEXT_PUBLIC_API_URL is embedded at build time from the build arg
+# If you change it in docker-compose.yml, you MUST rebuild: docker-compose build rota-dashboard
 RUN pnpm run build
 
 # Stage 3: Runner
@@ -33,8 +38,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-# Default API URL (can be overridden at runtime via docker-compose)
-ENV NEXT_PUBLIC_API_URL=http://localhost:8001
+# Note: NEXT_PUBLIC_API_URL is set at build time via build arg, not here
 
 # Create a non-root user
 RUN addgroup --system --gid 1001 nodejs

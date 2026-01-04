@@ -46,12 +46,17 @@ services:
     build:
       context: ./dashboard
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "http://rota-core:8001"
     container_name: rota-dashboard
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8001
+    # NOTE: If you change NEXT_PUBLIC_API_URL, you MUST rebuild the container:
+    #   docker-compose build rota-dashboard
+    #   docker-compose up -d rota-dashboard
     networks:
       - rota-network
     depends_on:
