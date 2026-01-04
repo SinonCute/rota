@@ -585,6 +585,35 @@ func (h *UpstreamProxyHandler) tryConnectWithRetries(selectedProxy *models.Proxy
 // connectViaProxy establishes a connection through a specific proxy
 func (h *UpstreamProxyHandler) connectViaProxy(proxy *models.Proxy, host string) (net.Conn, error) {
 	switch proxy.Protocol {
+	case "egress_ip":
+		// Egress IP rotation: bind to local IP and connect directly
+		ipManager := NewIPManager()
+
+		// Parse IP address from address field
+		ip, err := ipManager.ParseIPAddress(proxy.Address)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse IP address for egress_ip: %w", err)
+		}
+
+		// Validate IP exists on local interface
+		if err := ipManager.ValidateLocalIP(ip); err != nil {
+			return nil, fmt.Errorf("IP validation failed for egress_ip: %w", err)
+		}
+
+		// Create dialer bound to local IP
+		dialer, err := ipManager.BindToIP(ip)
+		if err != nil {
+			return nil, fmt.Errorf("failed to bind to IP %s for egress_ip: %w", ip, err)
+		}
+
+		// Connect directly to target host using bound dialer
+		conn, err := dialer.DialContext(context.Background(), "tcp", host)
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to %s via egress_ip %s: %w", host, ip, err)
+		}
+
+		return conn, nil
+
 	case "socks5":
 		// Create SOCKS5 dialer
 		var dialer proxyDialer.Dialer
