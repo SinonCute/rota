@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -74,8 +75,8 @@ func (h *HealthChecker) CheckProxy(ctx context.Context, proxy *models.Proxy) (*m
 		transport.TLSClientConfig = &tls.Config{}
 	}
 	transport.TLSClientConfig.InsecureSkipVerify = true
-	transport.TLSClientConfig.MinVersion = 0 // Allow all TLS versions including SSLv3
-	transport.TLSClientConfig.MaxVersion = 0 // No maximum version restriction
+	transport.TLSClientConfig.MinVersion = 0     // Allow all TLS versions including SSLv3
+	transport.TLSClientConfig.MaxVersion = 0     // No maximum version restriction
 	transport.TLSClientConfig.CipherSuites = nil // Accept all cipher suites
 	// This callback allows us to accept even unparseable certificates
 	transport.TLSClientConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
@@ -157,30 +158,124 @@ func (h *HealthChecker) CheckProxy(ctx context.Context, proxy *models.Proxy) (*m
 	if proxy.Protocol == "egress_ip" {
 		ipManager := NewIPManager()
 		expectedIP, err := ipManager.ParseIPAddress(proxy.Address)
+		if err != nil {
+			result.Status = "failed"
+			errMsg := fmt.Sprintf("failed to parse IP address for egress verification: %v", err)
+			result.Error = &errMsg
+
+			// Record health check failure
+			go func() {
+				recordCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				h.tracker.RecordHealthCheck(recordCtx, proxy.ID, false, duration, errMsg)
+			}()
+
+			return result, nil
+		}
+
+		// Try to extract IP from health check response first
+		egressIP := ""
+		body, err := io.ReadAll(resp.Body)
 		if err == nil {
-			// Verify egress IP by checking response body (if it's an IP check service)
-			// or by making a separate request to an IP check service
-			body, err := io.ReadAll(resp.Body)
-			if err == nil {
-				egressIP := strings.TrimSpace(string(body))
-				// Check if response is an IP address
-				if net.ParseIP(egressIP) != nil {
-					if egressIP != expectedIP {
-						result.Status = "failed"
-						errMsg := fmt.Sprintf("egress IP mismatch: expected %s, got %s", expectedIP, egressIP)
-						result.Error = &errMsg
-
-						// Record health check failure
-						go func() {
-							recordCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-							defer cancel()
-							h.tracker.RecordHealthCheck(recordCtx, proxy.ID, false, duration, errMsg)
-						}()
-
-						return result, nil
+			bodyStr := strings.TrimSpace(string(body))
+			// Check if response is a plain IP address
+			if net.ParseIP(bodyStr) != nil {
+				egressIP = bodyStr
+			} else {
+				// Try to parse as JSON (e.g., {"ip":"1.2.3.4"} from ipify.org)
+				var jsonResp map[string]interface{}
+				if err := json.Unmarshal(body, &jsonResp); err == nil {
+					if ip, ok := jsonResp["ip"].(string); ok {
+						egressIP = strings.TrimSpace(ip)
 					}
 				}
 			}
+		}
+
+		// If we couldn't get IP from health check response, make a separate request
+		if egressIP == "" {
+			// Use a dedicated IP check service for egress IP verification
+			ipCheckURL := "https://api.ipify.org?format=json"
+			ipCheckReq, err := http.NewRequestWithContext(ctx, "GET", ipCheckURL, nil)
+			if err != nil {
+				result.Status = "failed"
+				errMsg := fmt.Sprintf("failed to create egress IP verification request: %v", err)
+				result.Error = &errMsg
+
+				go func() {
+					recordCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					h.tracker.RecordHealthCheck(recordCtx, proxy.ID, false, duration, errMsg)
+				}()
+
+				return result, nil
+			}
+
+			ipCheckResp, err := client.Do(ipCheckReq)
+			if err != nil {
+				result.Status = "failed"
+				errMsg := fmt.Sprintf("failed to get egress IP: %v", err)
+				result.Error = &errMsg
+
+				go func() {
+					recordCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					h.tracker.RecordHealthCheck(recordCtx, proxy.ID, false, duration, errMsg)
+				}()
+
+				return result, nil
+			}
+			defer ipCheckResp.Body.Close()
+
+			ipCheckBody, err := io.ReadAll(ipCheckResp.Body)
+			if err != nil {
+				result.Status = "failed"
+				errMsg := fmt.Sprintf("failed to read egress IP response: %v", err)
+				result.Error = &errMsg
+
+				go func() {
+					recordCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					h.tracker.RecordHealthCheck(recordCtx, proxy.ID, false, duration, errMsg)
+				}()
+
+				return result, nil
+			}
+
+			var ipifyResponse struct {
+				IP string `json:"ip"`
+			}
+			if err := json.Unmarshal(ipCheckBody, &ipifyResponse); err != nil {
+				result.Status = "failed"
+				errMsg := fmt.Sprintf("failed to decode ipify response: %v", err)
+				result.Error = &errMsg
+
+				go func() {
+					recordCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					h.tracker.RecordHealthCheck(recordCtx, proxy.ID, false, duration, errMsg)
+				}()
+
+				return result, nil
+			}
+
+			egressIP = strings.TrimSpace(ipifyResponse.IP)
+		}
+
+		// Verify egress IP matches expected IP
+		if egressIP != expectedIP {
+			result.Status = "failed"
+			errMsg := fmt.Sprintf("egress IP mismatch: expected %s, got %s", expectedIP, egressIP)
+			result.Error = &errMsg
+
+			// Record health check failure
+			go func() {
+				recordCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				h.tracker.RecordHealthCheck(recordCtx, proxy.ID, false, duration, errMsg)
+			}()
+
+			return result, nil
 		}
 	}
 

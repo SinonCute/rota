@@ -36,32 +36,7 @@ func CreateProxyTransport(p *models.Proxy) (*http.Transport, error) {
 		ExpectContinueTimeout: 10 * time.Second,
 	}
 
-	// Parse proxy URL
-	var proxyURL string
-	var authMasked string // For logging (hide credentials)
-
-	if p.Username != nil && *p.Username != "" {
-		// Username exists, include authentication
-		if p.Password != nil && *p.Password != "" {
-			// Both username and password
-			proxyURL = fmt.Sprintf("%s://%s:%s@%s", p.Protocol, *p.Username, *p.Password, p.Address)
-			authMasked = fmt.Sprintf("%s://[username]:[password]@%s", p.Protocol, p.Address)
-		} else {
-			// Only username (API key), password is empty
-			proxyURL = fmt.Sprintf("%s://%s:@%s", p.Protocol, *p.Username, p.Address)
-			authMasked = fmt.Sprintf("%s://[api_key]:@%s", p.Protocol, p.Address)
-		}
-	} else {
-		// No authentication
-		proxyURL = fmt.Sprintf("%s://%s", p.Protocol, p.Address)
-		authMasked = proxyURL
-	}
-
-	parsedURL, err := url.Parse(proxyURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid proxy URL %s: %w", authMasked, err)
-	}
-
+	// Handle egress_ip protocol first - it doesn't need URL parsing
 	switch p.Protocol {
 	case "egress_ip":
 		// Egress IP rotation: bind to local IP address
@@ -89,10 +64,47 @@ func CreateProxyTransport(p *models.Proxy) (*http.Transport, error) {
 			return dialer.DialContext(ctx, network, addr)
 		}
 		// Do NOT set transport.Proxy - this is a direct connection
+		return transport, nil
 	case "http", "https":
+		// Parse proxy URL for HTTP/HTTPS protocols
+		var proxyURL string
+		var authMasked string // For logging (hide credentials)
+
+		if p.Username != nil && *p.Username != "" {
+			// Username exists, include authentication
+			if p.Password != nil && *p.Password != "" {
+				// Both username and password
+				proxyURL = fmt.Sprintf("%s://%s:%s@%s", p.Protocol, *p.Username, *p.Password, p.Address)
+				authMasked = fmt.Sprintf("%s://[username]:[password]@%s", p.Protocol, p.Address)
+			} else {
+				// Only username (API key), password is empty
+				proxyURL = fmt.Sprintf("%s://%s:@%s", p.Protocol, *p.Username, p.Address)
+				authMasked = fmt.Sprintf("%s://[api_key]:@%s", p.Protocol, p.Address)
+			}
+		} else {
+			// No authentication
+			proxyURL = fmt.Sprintf("%s://%s", p.Protocol, p.Address)
+			authMasked = proxyURL
+		}
+
+		parsedURL, err := url.Parse(proxyURL)
+		if err != nil {
+			return nil, fmt.Errorf("invalid proxy URL %s: %w", authMasked, err)
+		}
 		// Set proxy URL - http.Transport will handle authentication headers automatically
 		transport.Proxy = http.ProxyURL(parsedURL)
 	case "socks4", "socks4a":
+		// Parse proxy URL for SOCKS4 protocols
+		var proxyURL string
+		if p.Username != nil && *p.Username != "" {
+			if p.Password != nil && *p.Password != "" {
+				proxyURL = fmt.Sprintf("%s://%s:%s@%s", p.Protocol, *p.Username, *p.Password, p.Address)
+			} else {
+				proxyURL = fmt.Sprintf("%s://%s:@%s", p.Protocol, *p.Username, p.Address)
+			}
+		} else {
+			proxyURL = fmt.Sprintf("%s://%s", p.Protocol, p.Address)
+		}
 		// Create SOCKS4/SOCKS4A dialer using h12.io/socks
 		// The Dial function accepts URI format: socks4://[user@]host:port
 		transport.Dial = socks.Dial(proxyURL)

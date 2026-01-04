@@ -952,17 +952,29 @@ export default function ProxiesPage() {
                 <Label htmlFor="edit-address">Address</Label>
                 <Input
                   id="edit-address"
-                  placeholder="192.168.1.100:8001"
+                  placeholder={editingProxy.protocol === "egress_ip" ? "192.168.1.100" : "192.168.1.100:8001"}
                   className="font-mono"
                   value={editingProxy.address}
                   onChange={(e) => setEditingProxy({ ...editingProxy, address: e.target.value })}
                 />
+                {editingProxy.protocol === "egress_ip" && (
+                  <p className="text-xs text-muted-foreground">
+                    Enter a local IP address available on your network interface
+                  </p>
+                )}
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="edit-protocol">Protocol</Label>
                 <Select
                   value={editingProxy.protocol}
-                  onValueChange={(value: any) => setEditingProxy({ ...editingProxy, protocol: value })}
+                  onValueChange={(value: any) => {
+                    setEditingProxy({ 
+                      ...editingProxy, 
+                      protocol: value,
+                      // Clear username when switching to egress_ip
+                      ...(value === "egress_ip" ? { username: undefined } : {})
+                    })
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -977,14 +989,16 @@ export default function ProxiesPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="edit-username">Username (optional)</Label>
-                <Input
-                  id="edit-username"
-                  value={editingProxy.username || ""}
-                  onChange={(e) => setEditingProxy({ ...editingProxy, username: e.target.value })}
-                />
-              </div>
+              {editingProxy.protocol !== "egress_ip" && (
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-username">Username (optional)</Label>
+                  <Input
+                    id="edit-username"
+                    value={editingProxy.username || ""}
+                    onChange={(e) => setEditingProxy({ ...editingProxy, username: e.target.value })}
+                  />
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
