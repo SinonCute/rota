@@ -22,6 +22,7 @@ type AuthenticationSettings struct {
 
 // RotationSettings represents proxy rotation configuration
 type RotationSettings struct {
+	Mode               string            `json:"mode"` // "proxy" (default) or "ip"
 	Method             string            `json:"method"`
 	TimeBased          TimeBasedSettings `json:"time_based,omitempty"`
 	RemoveUnhealthy    bool              `json:"remove_unhealthy"`
@@ -30,7 +31,7 @@ type RotationSettings struct {
 	FollowRedirect     bool              `json:"follow_redirect"`
 	Timeout            int               `json:"timeout"`
 	Retries            int               `json:"retries"`
-	AllowedProtocols   []string          `json:"allowed_protocols"` // ["http", "https", "socks4", "socks4a", "socks5"], empty means all
+	AllowedProtocols   []string          `json:"allowed_protocols"` // ["http", "https", "socks4", "socks4a", "socks5", "egress_ip"], empty means all
 	MaxResponseTime    int               `json:"max_response_time"` // in milliseconds, 0 means no limit
 	MinSuccessRate     float64           `json:"min_success_rate"`  // 0-100, 0 means no minimum
 }

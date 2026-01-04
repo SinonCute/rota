@@ -128,8 +128,13 @@ func (h *UpstreamProxyHandler) sendWithRetry(req *http.Request, ctx context.Cont
 		perProxyRetries = 1 // Default to 1 if not set
 	}
 
-	h.logger.Info("starting proxy selection",
+	rotationType := "proxy"
+	if h.settings.Mode == "ip" {
+		rotationType = "IP"
+	}
+	h.logger.Info("starting selection",
 		"source", "proxy",
+		"rotation_type", rotationType,
 		"max_fallback_retries", maxFallbackRetries,
 		"per_proxy_retries", perProxyRetries,
 		"url", req.URL.String(),
@@ -155,10 +160,16 @@ func (h *UpstreamProxyHandler) sendWithRetry(req *http.Request, ctx context.Cont
 		}
 		triedProxies[selectedProxy.ID] = true
 
-		h.logger.Info("attempting request with proxy",
+		rotationType := "proxy"
+		if selectedProxy.Protocol == "egress_ip" {
+			rotationType = "Egress IP"
+		}
+		h.logger.Info("attempting request",
 			"source", "proxy",
+			"rotation_type", rotationType,
 			"proxy_id", selectedProxy.ID,
 			"proxy_address", selectedProxy.Address,
+			"protocol", selectedProxy.Protocol,
 			"fallback_attempt", fallbackAttempt+1,
 		)
 
@@ -220,11 +231,17 @@ func (h *UpstreamProxyHandler) sendWithRetry(req *http.Request, ctx context.Cont
 func (h *UpstreamProxyHandler) tryProxyWithRetries(req *http.Request, ctx context.Context, selectedProxy *models.Proxy, maxRetries int) (*http.Response, error) {
 	var lastErr error
 
+	rotationType := "proxy"
+	if selectedProxy.Protocol == "egress_ip" {
+		rotationType = "Egress IP"
+	}
 	for retry := 0; retry < maxRetries; retry++ {
 		h.logger.Info("attempting request",
 			"source", "proxy",
+			"rotation_type", rotationType,
 			"proxy_id", selectedProxy.ID,
 			"proxy_address", selectedProxy.Address,
+			"protocol", selectedProxy.Protocol,
 			"retry", retry+1,
 			"max_retries", maxRetries,
 		)
@@ -269,10 +286,12 @@ func (h *UpstreamProxyHandler) tryProxyWithRetries(req *http.Request, ctx contex
 		resp, err := client.Do(clonedReq)
 		if err != nil {
 			lastErr = fmt.Errorf("proxy %s failed: %w", selectedProxy.Address, err)
-			h.logger.Warn("proxy request failed",
+			h.logger.Warn("request failed",
 				"source", "proxy",
+				"rotation_type", rotationType,
 				"proxy_id", selectedProxy.ID,
 				"proxy_address", selectedProxy.Address,
+				"protocol", selectedProxy.Protocol,
 				"retry", retry+1,
 				"max_retries", maxRetries,
 				"error", err,
@@ -284,10 +303,12 @@ func (h *UpstreamProxyHandler) tryProxyWithRetries(req *http.Request, ctx contex
 			}
 		} else {
 			// Success!
-			h.logger.Info("proxy request succeeded",
+			h.logger.Info("request succeeded",
 				"source", "proxy",
+				"rotation_type", rotationType,
 				"proxy_id", selectedProxy.ID,
 				"proxy_address", selectedProxy.Address,
+				"protocol", selectedProxy.Protocol,
 				"retry", retry+1,
 				"status_code", resp.StatusCode,
 			)
@@ -300,8 +321,13 @@ func (h *UpstreamProxyHandler) tryProxyWithRetries(req *http.Request, ctx contex
 
 // createTransport creates an HTTP transport for the given proxy
 func (h *UpstreamProxyHandler) createTransport(p *models.Proxy) (*http.Transport, error) {
-	h.logger.Info("creating transport for proxy",
+	rotationType := "proxy"
+	if p.Protocol == "egress_ip" {
+		rotationType = "Egress IP"
+	}
+	h.logger.Info("creating transport",
 		"source", "proxy",
+		"rotation_type", rotationType,
 		"proxy_id", p.ID,
 		"proxy_address", p.Address,
 		"protocol", p.Protocol,

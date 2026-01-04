@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/alpkeskin/rota/core/internal/models"
+	"github.com/alpkeskin/rota/core/internal/proxy"
 	"github.com/alpkeskin/rota/core/internal/repository"
 	"github.com/alpkeskin/rota/core/pkg/logger"
 	"github.com/go-chi/chi/v5"
@@ -36,6 +37,7 @@ func NewProxyHandler(proxyRepo *repository.ProxyRepository, healthChecker Health
 }
 
 // List handles proxy listing with pagination and filters
+//
 //	@Summary		List proxies
 //	@Description	Get paginated list of proxies with optional filters
 //	@Tags			proxies
@@ -93,6 +95,7 @@ func (h *ProxyHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 // Create handles proxy creation
+//
 //	@Summary		Create proxy
 //	@Description	Create a new proxy server
 //	@Tags			proxies
@@ -120,6 +123,20 @@ func (h *ProxyHandler) Create(w http.ResponseWriter, r *http.Request) {
 		req.Protocol = "http"
 	}
 
+	// Validate IP address for egress IP rotation mode
+	if req.Protocol == "egress_ip" {
+		ipManager := proxy.NewIPManager()
+		ip, err := ipManager.ParseIPAddress(req.Address)
+		if err != nil {
+			h.errorResponse(w, http.StatusBadRequest, fmt.Sprintf("Invalid IP address format: %v", err))
+			return
+		}
+		if err := ipManager.ValidateLocalIP(ip); err != nil {
+			h.errorResponse(w, http.StatusBadRequest, fmt.Sprintf("IP address validation failed: %v. The IP must be available on a local network interface.", err))
+			return
+		}
+	}
+
 	proxy, err := h.proxyRepo.Create(r.Context(), req)
 	if err != nil {
 		h.logger.Error("failed to create proxy", "error", err)
@@ -131,6 +148,7 @@ func (h *ProxyHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 // BulkCreate handles bulk proxy creation
+//
 //	@Summary		Bulk create proxies
 //	@Description	Create multiple proxy servers at once
 //	@Tags			proxies
@@ -185,6 +203,7 @@ func (h *ProxyHandler) BulkCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 // Update handles proxy update
+//
 //	@Summary		Update proxy
 //	@Description	Update an existing proxy server
 //	@Tags			proxies
@@ -227,6 +246,7 @@ func (h *ProxyHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 // Delete handles proxy deletion
+//
 //	@Summary		Delete proxy
 //	@Description	Delete a proxy server by ID
 //	@Tags			proxies
@@ -253,6 +273,7 @@ func (h *ProxyHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 // BulkDelete handles bulk proxy deletion
+//
 //	@Summary		Bulk delete proxies
 //	@Description	Delete multiple proxy servers at once
 //	@Tags			proxies
@@ -291,6 +312,7 @@ func (h *ProxyHandler) BulkDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 // Test handles proxy testing
+//
 //	@Summary		Test proxy
 //	@Description	Test a proxy server's connectivity and performance
 //	@Tags			proxies
@@ -341,6 +363,7 @@ func (h *ProxyHandler) Test(w http.ResponseWriter, r *http.Request) {
 }
 
 // Export handles proxy export
+//
 //	@Summary		Export proxies
 //	@Description	Export proxy list in various formats (txt, json, csv)
 //	@Tags			proxies

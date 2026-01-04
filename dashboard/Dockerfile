@@ -24,6 +24,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
 # Build the application
+# Note: NEXT_PUBLIC_API_URL can be set at runtime, no need for build arg
 RUN pnpm run build
 
 # Stage 3: Runner
@@ -32,6 +33,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+# Default API URL (can be overridden at runtime via docker-compose)
+ENV NEXT_PUBLIC_API_URL=http://localhost:8001
 
 # Create a non-root user
 RUN addgroup --system --gid 1001 nodejs

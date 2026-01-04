@@ -245,6 +245,22 @@ var migrations = []Migration{
 			WHERE key = 'healthcheck';
 		`,
 	},
+	{
+		Version:     11,
+		Description: "Add mode field to rotation settings for IP rotation support",
+		Up: `
+			-- Add mode field to rotation settings (default: "proxy" for backward compatibility)
+			UPDATE settings
+			SET value = jsonb_set(value, '{mode}', '"proxy"')
+			WHERE key = 'rotation' AND value->>'mode' IS NULL;
+		`,
+		Down: `
+			-- Remove mode field from rotation settings
+			UPDATE settings
+			SET value = value - 'mode'
+			WHERE key = 'rotation';
+		`,
+	},
 }
 
 // Migrate runs all pending migrations

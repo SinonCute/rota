@@ -14,14 +14,25 @@ import {
   ProxyTestResult,
 } from "./types"
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"
+// Get API URL from runtime config (injected via window) or fallback to build-time env or default
+const getApiUrl = (): string => {
+  // Try to get from runtime config (injected in layout.tsx)
+  if (typeof window !== "undefined" && (window as any).__ROTA_CONFIG__?.apiUrl) {
+    return (window as any).__ROTA_CONFIG__.apiUrl;
+  }
+  // Fallback to build-time env var or default
+  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+};
+
+const API_BASE_URL = getApiUrl();
 
 class ApiClient {
   private baseUrl: string
   private token: string | null = null
 
   constructor(baseUrl: string = API_BASE_URL) {
-    this.baseUrl = baseUrl
+    // Re-read API URL in case it was updated at runtime
+    this.baseUrl = baseUrl || getApiUrl()
     // Load token from localStorage if available
     if (typeof window !== "undefined") {
       this.token = localStorage.getItem("auth_token")

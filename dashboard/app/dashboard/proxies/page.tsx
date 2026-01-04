@@ -100,14 +100,14 @@ export default function ProxiesPage() {
 
   const [newProxy, setNewProxy] = React.useState({
     address: "",
-    protocol: "http" as "http" | "https" | "socks5",
+    protocol: "http" as "http" | "https" | "socks4" | "socks4a" | "socks5" | "egress_ip",
     username: "",
     password: "",
   })
 
   // Import modal states
   const [importFile, setImportFile] = React.useState<File | null>(null)
-  const [importProtocol, setImportProtocol] = React.useState<"http" | "https" | "socks5">("http")
+  const [importProtocol, setImportProtocol] = React.useState<"http" | "https" | "socks4" | "socks4a" | "socks5" | "egress_ip">("http")
   const [importUsername, setImportUsername] = React.useState("")
   const [importPassword, setImportPassword] = React.useState("")
   const [parsedProxies, setParsedProxies] = React.useState<string[]>([])
@@ -744,6 +744,7 @@ export default function ProxiesPage() {
                         <SelectItem value="socks4">SOCKS4</SelectItem>
                         <SelectItem value="socks4a">SOCKS4A</SelectItem>
                         <SelectItem value="socks5">SOCKS5</SelectItem>
+                        <SelectItem value="egress_ip">Egress IP</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -873,17 +874,22 @@ export default function ProxiesPage() {
               <Label htmlFor="address">Address</Label>
               <Input
                 id="address"
-                placeholder="192.168.1.100:8001"
+                placeholder={newProxy.protocol === "egress_ip" ? "192.168.1.100" : "192.168.1.100:8001"}
                 className="font-mono"
                 value={newProxy.address}
                 onChange={(e) => setNewProxy({ ...newProxy, address: e.target.value })}
               />
+              {newProxy.protocol === "egress_ip" && (
+                <p className="text-xs text-muted-foreground">
+                  Enter a local IP address available on your network interface
+                </p>
+              )}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="protocol">Protocol</Label>
               <Select
                 value={newProxy.protocol}
-                onValueChange={(value: any) => setNewProxy({ ...newProxy, protocol: value })}
+                onValueChange={(value: any) => setNewProxy({ ...newProxy, protocol: value, username: "", password: "" })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -894,26 +900,31 @@ export default function ProxiesPage() {
                   <SelectItem value="socks4">SOCKS4</SelectItem>
                   <SelectItem value="socks4a">SOCKS4A</SelectItem>
                   <SelectItem value="socks5">SOCKS5</SelectItem>
+                  <SelectItem value="egress_ip">Egress IP</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="username">Username (optional)</Label>
-              <Input
-                id="username"
-                value={newProxy.username}
-                onChange={(e) => setNewProxy({ ...newProxy, username: e.target.value })}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="password">Password (optional)</Label>
-              <Input
-                id="password"
-                type="password"
-                value={newProxy.password}
-                onChange={(e) => setNewProxy({ ...newProxy, password: e.target.value })}
-              />
-            </div>
+            {newProxy.protocol !== "egress_ip" && (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="username">Username (optional)</Label>
+                  <Input
+                    id="username"
+                    value={newProxy.username}
+                    onChange={(e) => setNewProxy({ ...newProxy, username: e.target.value })}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="password">Password (optional)</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={newProxy.password}
+                    onChange={(e) => setNewProxy({ ...newProxy, password: e.target.value })}
+                  />
+                </div>
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
@@ -962,6 +973,7 @@ export default function ProxiesPage() {
                     <SelectItem value="socks4">SOCKS4</SelectItem>
                     <SelectItem value="socks4a">SOCKS4A</SelectItem>
                     <SelectItem value="socks5">SOCKS5</SelectItem>
+                    <SelectItem value="egress_ip">Egress IP</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1092,6 +1104,7 @@ export default function ProxiesPage() {
                           <SelectItem value="socks4">SOCKS4</SelectItem>
                           <SelectItem value="socks4a">SOCKS4A</SelectItem>
                           <SelectItem value="socks5">SOCKS5</SelectItem>
+                          <SelectItem value="egress_ip">Egress IP</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

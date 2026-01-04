@@ -5,6 +5,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -149,6 +151,37 @@ func (h *HealthChecker) CheckProxy(ctx context.Context, proxy *models.Proxy) (*m
 		}()
 
 		return result, nil
+	}
+
+	// For egress IP rotation mode, verify egress IP matches expected IP
+	if proxy.Protocol == "egress_ip" {
+		ipManager := NewIPManager()
+		expectedIP, err := ipManager.ParseIPAddress(proxy.Address)
+		if err == nil {
+			// Verify egress IP by checking response body (if it's an IP check service)
+			// or by making a separate request to an IP check service
+			body, err := io.ReadAll(resp.Body)
+			if err == nil {
+				egressIP := strings.TrimSpace(string(body))
+				// Check if response is an IP address
+				if net.ParseIP(egressIP) != nil {
+					if egressIP != expectedIP {
+						result.Status = "failed"
+						errMsg := fmt.Sprintf("egress IP mismatch: expected %s, got %s", expectedIP, egressIP)
+						result.Error = &errMsg
+
+						// Record health check failure
+						go func() {
+							recordCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+							defer cancel()
+							h.tracker.RecordHealthCheck(recordCtx, proxy.ID, false, duration, errMsg)
+						}()
+
+						return result, nil
+					}
+				}
+			}
+		}
 	}
 
 	// Success!

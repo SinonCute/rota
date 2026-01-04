@@ -1,15 +1,17 @@
 package proxy
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"time"
 
 	"github.com/alpkeskin/rota/core/internal/models"
-	"h12.io/socks"
 	proxyDialer "golang.org/x/net/proxy"
+	"h12.io/socks"
 )
 
 // CreateProxyTransport creates an HTTP transport configured for the given proxy
@@ -20,9 +22,9 @@ func CreateProxyTransport(p *models.Proxy) (*http.Transport, error) {
 		MaxIdleConnsPerHost: 10,
 		IdleConnTimeout:     90 * time.Second,
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,  // Skip certificate verification for proxy connections
+			InsecureSkipVerify: true,             // Skip certificate verification for proxy connections
 			MinVersion:         tls.VersionTLS10, // Support older TLS versions for compatibility
-			MaxVersion:         0, // Allow all TLS versions
+			MaxVersion:         0,                // Allow all TLS versions
 			// Don't specify CipherSuites to accept all available ciphers for maximum compatibility
 			// This is acceptable since InsecureSkipVerify is already true
 		},
@@ -61,6 +63,32 @@ func CreateProxyTransport(p *models.Proxy) (*http.Transport, error) {
 	}
 
 	switch p.Protocol {
+	case "egress_ip":
+		// Egress IP rotation: bind to local IP address
+		ipManager := NewIPManager()
+
+		// Parse IP address from address field (may contain port, but we only need IP)
+		ip, err := ipManager.ParseIPAddress(p.Address)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse IP address: %w", err)
+		}
+
+		// Validate IP exists on local interface
+		if err := ipManager.ValidateLocalIP(ip); err != nil {
+			return nil, fmt.Errorf("IP validation failed: %w", err)
+		}
+
+		// Create dialer bound to local IP
+		dialer, err := ipManager.BindToIP(ip)
+		if err != nil {
+			return nil, fmt.Errorf("failed to bind to IP %s: %w", ip, err)
+		}
+
+		// Set DialContext to use the bound dialer
+		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dialer.DialContext(ctx, network, addr)
+		}
+		// Do NOT set transport.Proxy - this is a direct connection
 	case "http", "https":
 		// Set proxy URL - http.Transport will handle authentication headers automatically
 		transport.Proxy = http.ProxyURL(parsedURL)

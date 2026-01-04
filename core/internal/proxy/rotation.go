@@ -264,7 +264,32 @@ func (b *BaseSelector) loadActiveProxiesWithSettings(ctx context.Context, settin
 
 		// Apply filters if settings provided
 		if settings != nil {
-			// Protocol filter
+			// Rotation mode filter - filter by mode (proxy vs ip)
+			mode := settings.Mode
+			if mode == "" {
+				mode = "proxy" // Default to proxy mode for backward compatibility
+			}
+
+			if mode == "ip" {
+				// IP rotation mode: only allow "egress_ip" protocol
+				if p.Protocol != "egress_ip" {
+					continue
+				}
+			} else if mode == "proxy" {
+				// Proxy rotation mode: only allow traditional proxy protocols
+				proxyProtocols := map[string]bool{
+					"http":    true,
+					"https":   true,
+					"socks4":  true,
+					"socks4a": true,
+					"socks5":  true,
+				}
+				if !proxyProtocols[p.Protocol] {
+					continue
+				}
+			}
+
+			// Protocol filter (additional filtering by allowed protocols)
 			if len(settings.AllowedProtocols) > 0 {
 				allowed := false
 				for _, protocol := range settings.AllowedProtocols {

@@ -140,6 +140,32 @@ export default function SettingsPage() {
               {/* Left Column */}
               <div className="space-y-4">
                 <div className="space-y-2">
+                  <Label htmlFor="rotation-mode">Rotation Mode</Label>
+                  <Select
+                    value={settings.rotation.mode || "proxy"}
+                    onValueChange={(value: any) =>
+                      setSettings({
+                        ...settings,
+                        rotation: { ...settings.rotation, mode: value },
+                      })
+                    }
+                  >
+                    <SelectTrigger id="rotation-mode">
+                      <SelectValue placeholder="Select mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="proxy">Proxy Rotation</SelectItem>
+                      <SelectItem value="ip">Egress IP Rotation</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {settings.rotation.mode === "ip" 
+                      ? "Use local network interface IPs for rotation" 
+                      : "Use external proxy servers for rotation"}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="rotation-method">Rotation Method</Label>
                   <Select
                     value={settings.rotation.method}
@@ -344,7 +370,10 @@ export default function SettingsPage() {
                     <DropdownMenuContent className="w-56">
                       <DropdownMenuLabel>Select Protocols</DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                      {["http", "https", "socks4", "socks4a", "socks5"].map((protocol) => (
+                      {(settings.rotation.mode === "ip" 
+                        ? ["egress_ip"] 
+                        : ["http", "https", "socks4", "socks4a", "socks5"]
+                      ).map((protocol) => (
                         <DropdownMenuCheckboxItem
                           key={protocol}
                           checked={settings.rotation.allowed_protocols?.includes(protocol)}
@@ -365,7 +394,9 @@ export default function SettingsPage() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                   <p className="text-xs text-muted-foreground">
-                    Select which protocols to use for proxy rotation
+                    {settings.rotation.mode === "ip"
+                      ? "Select which IP protocols to use for rotation"
+                      : "Select which protocols to use for proxy rotation"}
                   </p>
                 </div>
               </div>

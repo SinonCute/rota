@@ -3,7 +3,7 @@
 export interface Proxy {
   id: number
   address: string
-  protocol: "http" | "https" | "socks4" | "socks4a" | "socks5"
+  protocol: "http" | "https" | "socks4" | "socks4a" | "socks5" | "egress_ip"
   status: "active" | "failed" | "idle"
   requests: number
   success_rate: number
@@ -98,6 +98,7 @@ export interface Settings {
     password: string
   }
   rotation: {
+    mode?: "proxy" | "ip"
     method: "random" | "roundrobin" | "least_conn" | "time_based"
     time_based?: {
       interval: number
@@ -147,14 +148,14 @@ export interface ApiError {
 // Request Types
 export interface AddProxyRequest {
   address: string
-  protocol: "http" | "https" | "socks4" | "socks4a" | "socks5"
+  protocol: "http" | "https" | "socks4" | "socks4a" | "socks5" | "egress_ip"
   username?: string
   password?: string
 }
 
 export interface UpdateProxyRequest {
   address?: string
-  protocol?: "http" | "https" | "socks4" | "socks4a" | "socks5"
+  protocol?: "http" | "https" | "socks4" | "socks4a" | "socks5" | "egress_ip"
   username?: string
   password?: string
 }

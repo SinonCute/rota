@@ -4,20 +4,20 @@ import "time"
 
 // Proxy represents a proxy server
 type Proxy struct {
-	ID                 int       `json:"id"`
-	Address            string    `json:"address"`
-	Protocol           string    `json:"protocol"`
-	Username           *string   `json:"username,omitempty"`
-	Password           *string   `json:"-"` // Never expose password in JSON
-	Status             string    `json:"status"`
-	Requests           int64     `json:"requests"`
-	SuccessfulRequests int64     `json:"-"`
-	FailedRequests     int64     `json:"-"`
-	AvgResponseTime    int       `json:"avg_response_time"`
+	ID                 int        `json:"id"`
+	Address            string     `json:"address"`
+	Protocol           string     `json:"protocol"`
+	Username           *string    `json:"username,omitempty"`
+	Password           *string    `json:"-"` // Never expose password in JSON
+	Status             string     `json:"status"`
+	Requests           int64      `json:"requests"`
+	SuccessfulRequests int64      `json:"-"`
+	FailedRequests     int64      `json:"-"`
+	AvgResponseTime    int        `json:"avg_response_time"`
 	LastCheck          *time.Time `json:"last_check,omitempty"`
-	LastError          *string   `json:"-"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	LastError          *string    `json:"-"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 }
 
 // ProxyWithStats represents a proxy with calculated statistics
@@ -38,7 +38,7 @@ type ProxyWithStats struct {
 // CreateProxyRequest represents a request to create a proxy
 type CreateProxyRequest struct {
 	Address  string  `json:"address" validate:"required"`
-	Protocol string  `json:"protocol" validate:"required,oneof=http https socks4 socks4a socks5"`
+	Protocol string  `json:"protocol" validate:"required,oneof=http https socks4 socks4a socks5 egress_ip"`
 	Username *string `json:"username,omitempty"`
 	Password *string `json:"password,omitempty"`
 }
@@ -46,7 +46,7 @@ type CreateProxyRequest struct {
 // UpdateProxyRequest represents a request to update a proxy
 type UpdateProxyRequest struct {
 	Address  string  `json:"address"`
-	Protocol string  `json:"protocol" validate:"omitempty,oneof=http https socks4 socks4a socks5"`
+	Protocol string  `json:"protocol" validate:"omitempty,oneof=http https socks4 socks4a socks5 egress_ip"`
 	Username *string `json:"username,omitempty"`
 	Password *string `json:"password,omitempty"`
 }
@@ -63,12 +63,12 @@ type BulkDeleteProxyRequest struct {
 
 // ProxyTestResult represents the result of testing a proxy
 type ProxyTestResult struct {
-	ID           int        `json:"id"`
-	Address      string     `json:"address"`
-	Status       string     `json:"status"`
-	ResponseTime *int       `json:"response_time,omitempty"`
-	Error        *string    `json:"error,omitempty"`
-	TestedAt     time.Time  `json:"tested_at"`
+	ID           int       `json:"id"`
+	Address      string    `json:"address"`
+	Status       string    `json:"status"`
+	ResponseTime *int      `json:"response_time,omitempty"`
+	Error        *string   `json:"error,omitempty"`
+	TestedAt     time.Time `json:"tested_at"`
 }
 
 // ProxyListResponse represents a paginated list of proxies
