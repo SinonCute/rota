@@ -250,7 +250,10 @@ func (b *BaseSelector) loadActiveProxiesWithSettings(ctx context.Context, settin
 	}
 	defer rows.Close()
 
+	allProxies := make([]*models.Proxy, 0)
 	proxies := make([]*models.Proxy, 0)
+
+	// First, collect all proxies from database
 	for rows.Next() {
 		var p models.Proxy
 		err := rows.Scan(
@@ -261,22 +264,27 @@ func (b *BaseSelector) loadActiveProxiesWithSettings(ctx context.Context, settin
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan proxy: %w", err)
 		}
+		allProxies = append(allProxies, &p)
+	}
 
-		// Apply filters if settings provided
-		if settings != nil {
-			// Rotation mode filter - filter by mode (proxy vs ip)
-			mode := settings.Mode
-			if mode == "" {
-				mode = "proxy" // Default to proxy mode for backward compatibility
-			}
+	// Apply filters if settings provided
+	if settings != nil {
+		// Rotation mode filter - filter by mode (proxy vs ip)
+		mode := settings.Mode
+		if mode == "" {
+			mode = "proxy" // Default to proxy mode for backward compatibility
+		}
 
-			if mode == "ip" {
+		// Filter each proxy
+		for _, p := range allProxies {
+			if mode == "ip" || mode == "egress_ip" {
 				// IP rotation mode: only allow "egress_ip" protocol
 				if p.Protocol != "egress_ip" {
 					continue
 				}
 			} else if mode == "proxy" {
 				// Proxy rotation mode: only allow traditional proxy protocols
+				// Exclude "egress_ip" from proxy mode
 				proxyProtocols := map[string]bool{
 					"http":    true,
 					"https":   true,
@@ -290,6 +298,8 @@ func (b *BaseSelector) loadActiveProxiesWithSettings(ctx context.Context, settin
 			}
 
 			// Protocol filter (additional filtering by allowed protocols)
+			// Note: If mode is set, the mode filter above already ensures correct protocol type
+			// This filter is for additional fine-grained control within the mode
 			if len(settings.AllowedProtocols) > 0 {
 				allowed := false
 				for _, protocol := range settings.AllowedProtocols {
@@ -315,13 +325,43 @@ func (b *BaseSelector) loadActiveProxiesWithSettings(ctx context.Context, settin
 					continue
 				}
 			}
-		}
 
-		proxies = append(proxies, &p)
+			proxies = append(proxies, p)
+		}
+	} else {
+		// No settings, include all proxies
+		proxies = allProxies
 	}
 
 	if len(proxies) == 0 {
-		return nil, fmt.Errorf("no active or idle proxies found matching filters")
+		mode := "proxy"
+		allowedProtocols := []string{}
+		if settings != nil {
+			mode = settings.Mode
+			if mode == "" {
+				mode = "proxy"
+			}
+			allowedProtocols = settings.AllowedProtocols
+		}
+
+		// Provide detailed error message
+		totalCount := len(allProxies)
+		var protocolCounts map[string]int
+		if totalCount > 0 {
+			protocolCounts = make(map[string]int)
+			for _, p := range allProxies {
+				protocolCounts[p.Protocol]++
+			}
+		}
+
+		errMsg := fmt.Sprintf("no active or idle proxies found matching filters (mode: %s, allowed_protocols: %v)", mode, allowedProtocols)
+		if totalCount > 0 {
+			errMsg += fmt.Sprintf(". Found %d total proxies in database: %v", totalCount, protocolCounts)
+		} else {
+			errMsg += ". No proxies found in database with status 'active' or 'idle'"
+		}
+
+		return nil, fmt.Errorf(errMsg)
 	}
 
 	return proxies, nil

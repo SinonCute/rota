@@ -25,6 +25,7 @@ func NewSettingsHandler(settingsRepo *repository.SettingsRepository, log *logger
 }
 
 // Get handles getting current configuration
+//
 //	@Summary		Get settings
 //	@Description	Get current system configuration
 //	@Tags			settings
@@ -47,6 +48,7 @@ func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 // Update handles updating configuration
+//
 //	@Summary		Update settings
 //	@Description	Update system configuration
 //	@Tags			settings
@@ -62,6 +64,32 @@ func (h *SettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
 		h.errorResponse(w, http.StatusBadRequest, "Invalid request body")
 		return
+	}
+
+	// Get current settings to detect mode change
+	currentSettings, err := h.settingsRepo.GetAll(r.Context())
+	if err != nil {
+		h.logger.Warn("failed to get current settings for mode change detection", "error", err)
+		// Continue anyway - not critical
+	} else {
+		// If rotation mode changed, reset allowed_protocols to empty (allow all)
+		currentMode := currentSettings.Rotation.Mode
+		if currentMode == "" {
+			currentMode = "proxy" // Default
+		}
+		newMode := settings.Rotation.Mode
+		if newMode == "" {
+			newMode = "proxy" // Default
+		}
+
+		if currentMode != newMode {
+			h.logger.Info("rotation mode changed, resetting allowed_protocols",
+				"old_mode", currentMode,
+				"new_mode", newMode,
+			)
+			// Reset allowed_protocols to empty array (allows all protocols)
+			settings.Rotation.AllowedProtocols = []string{}
+		}
 	}
 
 	// Validate settings
@@ -100,6 +128,7 @@ func (h *SettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 // Reset handles resetting configuration to defaults
+//
 //	@Summary		Reset settings
 //	@Description	Reset configuration to default values
 //	@Tags			settings

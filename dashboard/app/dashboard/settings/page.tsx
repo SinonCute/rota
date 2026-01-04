@@ -143,12 +143,21 @@ export default function SettingsPage() {
                   <Label htmlFor="rotation-mode">Rotation Mode</Label>
                   <Select
                     value={settings.rotation.mode || "proxy"}
-                    onValueChange={(value: any) =>
+                    onValueChange={(value: any) => {
+                      const currentMode = settings.rotation.mode || "proxy";
+                      // Reset allowed_protocols when mode changes
+                      const resetProtocols = currentMode !== value;
                       setSettings({
                         ...settings,
-                        rotation: { ...settings.rotation, mode: value },
-                      })
-                    }
+                        rotation: {
+                          ...settings.rotation,
+                          mode: value,
+                          // Reset allowed_protocols to empty array when mode changes
+                          // Empty array means "allow all protocols" for the selected mode
+                          allowed_protocols: resetProtocols ? [] : settings.rotation.allowed_protocols,
+                        },
+                      });
+                    }}
                   >
                     <SelectTrigger id="rotation-mode">
                       <SelectValue placeholder="Select mode" />
