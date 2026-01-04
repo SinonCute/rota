@@ -1,19 +1,27 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/alpkeskin/rota/core/internal/models"
 	"github.com/alpkeskin/rota/core/internal/repository"
 	"github.com/alpkeskin/rota/core/pkg/logger"
 )
 
+// ProxyServerReloader interface for reloading proxy server settings
+type ProxyServerReloader interface {
+	ReloadSettings(ctx context.Context) error
+}
+
 // SettingsHandler handles settings endpoints
 type SettingsHandler struct {
-	settingsRepo *repository.SettingsRepository
-	logger       *logger.Logger
+	settingsRepo        *repository.SettingsRepository
+	logger              *logger.Logger
+	proxyServerReloader ProxyServerReloader // Optional: for auto-reload on settings change
 }
 
 // NewSettingsHandler creates a new SettingsHandler
@@ -22,6 +30,11 @@ func NewSettingsHandler(settingsRepo *repository.SettingsRepository, log *logger
 		settingsRepo: settingsRepo,
 		logger:       log,
 	}
+}
+
+// SetProxyServerReloader sets the proxy server reloader (called after API server initialization)
+func (h *SettingsHandler) SetProxyServerReloader(reloader ProxyServerReloader) {
+	h.proxyServerReloader = reloader
 }
 
 // Get handles getting current configuration
@@ -117,6 +130,18 @@ func (h *SettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	// Never expose proxy password
 	updatedSettings.Authentication.Password = ""
+
+	// Automatically reload proxy server settings if reloader is available
+	if h.proxyServerReloader != nil {
+		reloadCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		if err := h.proxyServerReloader.ReloadSettings(reloadCtx); err != nil {
+			h.logger.Warn("failed to auto-reload proxy server settings after update", "error", err)
+			// Don't fail the request - settings are saved, just need manual reload
+		} else {
+			h.logger.Info("proxy server settings auto-reloaded after update")
+		}
+	}
 
 	response := map[string]interface{}{
 		"message": "Configuration updated successfully",

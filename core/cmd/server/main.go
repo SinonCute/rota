@@ -142,6 +142,7 @@ func run() error {
 	apiServer := api.New(cfg, log, db)
 
 	// Set proxy server reference in API server for reload functionality
+	// This also automatically sets it in settings handler for auto-reload
 	apiServer.SetProxyServer(proxyServer)
 
 	// Start servers in goroutines

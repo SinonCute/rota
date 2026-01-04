@@ -80,6 +80,9 @@ func New(cfg *config.Config, log *logger.Logger, db *database.DB) *Server {
 	metricsHandler := handlers.NewMetricsHandler(log)
 	documentationHandler := handlers.NewDocumentationHandler()
 
+	// Note: Proxy server reference will be set later via SetProxyServer
+	// Settings handler will be configured after proxy server is created
+
 	s := &Server{
 		router:               chi.NewRouter(),
 		logger:               log,
@@ -205,9 +208,14 @@ func (s *Server) Shutdown(ctx context.Context) error {
 // SetProxyServer sets the proxy server reference after initialization
 func (s *Server) SetProxyServer(ps ProxyServer) {
 	s.proxyServer = ps
+	// Also set it in settings handler for auto-reload on settings update
+	if s.settingsHandler != nil {
+		s.settingsHandler.SetProxyServerReloader(ps)
+	}
 }
 
 // ReloadProxyPool reloads the proxy pool from database
+//
 //	@Summary		Reload proxy pool
 //	@Description	Reload proxy pool from database
 //	@Tags			proxies

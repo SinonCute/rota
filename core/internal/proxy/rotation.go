@@ -267,6 +267,11 @@ func (b *BaseSelector) loadActiveProxiesWithSettings(ctx context.Context, settin
 		allProxies = append(allProxies, &p)
 	}
 
+	// Log total proxies found
+	if len(allProxies) == 0 {
+		return nil, fmt.Errorf("no active or idle proxies found in database")
+	}
+
 	// Apply filters if settings provided
 	if settings != nil {
 		// Rotation mode filter - filter by mode (proxy vs ip)
@@ -275,12 +280,17 @@ func (b *BaseSelector) loadActiveProxiesWithSettings(ctx context.Context, settin
 			mode = "proxy" // Default to proxy mode for backward compatibility
 		}
 
+		// Log filtering info for debugging
+		fmt.Printf("[PROXY FILTER] Mode: %s, Allowed Protocols: %v, Total proxies before filter: %d\n",
+			mode, settings.AllowedProtocols, len(allProxies))
+
 		// Filter each proxy
 		for _, p := range allProxies {
+			// Mode-based protocol filter
 			if mode == "ip" || mode == "egress_ip" {
 				// IP rotation mode: only allow "egress_ip" protocol
 				if p.Protocol != "egress_ip" {
-					continue
+					continue // Skip non-egress_ip protocols in IP mode
 				}
 			} else if mode == "proxy" {
 				// Proxy rotation mode: only allow traditional proxy protocols
@@ -293,7 +303,7 @@ func (b *BaseSelector) loadActiveProxiesWithSettings(ctx context.Context, settin
 					"socks5":  true,
 				}
 				if !proxyProtocols[p.Protocol] {
-					continue
+					continue // Skip egress_ip and other non-proxy protocols in proxy mode
 				}
 			}
 
@@ -328,9 +338,13 @@ func (b *BaseSelector) loadActiveProxiesWithSettings(ctx context.Context, settin
 
 			proxies = append(proxies, p)
 		}
+
+		// Log filtering results
+		fmt.Printf("[PROXY FILTER] After filtering: %d proxies available (from %d total)\n", len(proxies), len(allProxies))
 	} else {
 		// No settings, include all proxies
 		proxies = allProxies
+		fmt.Printf("[PROXY FILTER] No settings, including all %d proxies\n", len(proxies))
 	}
 
 	if len(proxies) == 0 {
@@ -347,16 +361,35 @@ func (b *BaseSelector) loadActiveProxiesWithSettings(ctx context.Context, settin
 		// Provide detailed error message
 		totalCount := len(allProxies)
 		var protocolCounts map[string]int
+		var statusCounts map[string]int
 		if totalCount > 0 {
 			protocolCounts = make(map[string]int)
+			statusCounts = make(map[string]int)
 			for _, p := range allProxies {
 				protocolCounts[p.Protocol]++
+				statusCounts[p.Status]++
 			}
 		}
 
-		errMsg := fmt.Sprintf("no active or idle proxies found matching filters (mode: %s, allowed_protocols: %v)", mode, allowedProtocols)
+		errMsg := fmt.Sprintf("no proxies matching filters (mode: %s, allowed_protocols: %v)", mode, allowedProtocols)
 		if totalCount > 0 {
-			errMsg += fmt.Sprintf(". Found %d total proxies in database: %v", totalCount, protocolCounts)
+			errMsg += fmt.Sprintf(". Found %d proxies in database - protocols: %v, statuses: %v", totalCount, protocolCounts, statusCounts)
+
+			// Add helpful suggestion based on mode
+			if mode == "ip" || mode == "egress_ip" {
+				if protocolCounts["egress_ip"] == 0 {
+					errMsg += ". No egress_ip proxies found. Add egress_ip proxies or change mode to 'proxy'"
+				} else {
+					errMsg += ". Egress IP proxies exist but may be filtered by allowed_protocols or other filters"
+				}
+			} else {
+				proxyCount := protocolCounts["http"] + protocolCounts["https"] + protocolCounts["socks4"] + protocolCounts["socks4a"] + protocolCounts["socks5"]
+				if proxyCount == 0 {
+					errMsg += ". No HTTP/HTTPS/SOCKS proxies found. Add proxy servers or change mode to 'ip'"
+				} else {
+					errMsg += ". Proxy servers exist but may be filtered by allowed_protocols or other filters"
+				}
+			}
 		} else {
 			errMsg += ". No proxies found in database with status 'active' or 'idle'"
 		}
